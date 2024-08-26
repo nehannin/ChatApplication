@@ -1,72 +1,24 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:my_chat_app/components/user_avatar.dart';
+import 'package:my_chat_app/cubits/chat/chat_cubit.dart';
+import 'package:my_chat_app/cubits/profiles/profiles_cubit.dart';
 import 'package:my_chat_app/models/message.dart';
-import 'package:my_chat_app/models/profile.dart';
 import 'package:my_chat_app/utils/constants.dart';
-import 'package:my_chat_app/pages/register_page.dart';
-import 'package:my_chat_app/pages/user_profile.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timeago/timeago.dart';
+import 'package:intl/intl.dart';
 
-// Displays chat bubbles as a ListView and TextField to enter new chat.
-class ChatPage extends StatefulWidget {
+/// Page to chat with someone.
+///
+/// Displays chat bubbles as a ListView and TextField to enter new chat.
+class ChatPage extends StatelessWidget {
   const ChatPage({Key? key}) : super(key: key);
 
-  static Route<void> route() {
+  static Route<void> route(String roomId) {
     return MaterialPageRoute(
-      builder: (context) => const ChatPage(),
-    );
-  }
-
-  @override
-  State<ChatPage> createState() => _ChatPageState();
-}
-
-class _ChatPageState extends State<ChatPage> {
-  late final Stream<List<Message>> _messagesStream;
-  final Map<String, Profile> _profileCache = {};
-
-  @override
-  void initState() {
-    // Initialize the stream of messages
-    final myUserId = supabase.auth.currentUser!.id;
-    _messagesStream = supabase
-        .from('messages')
-        .stream(primaryKey: ['id'])
-        .order('created_at')
-        .map((maps) => maps
-            .map((map) => Message.fromMap(map: map, myUserId: myUserId))
-            .toList());
-    super.initState();
-  }
-
-  Future<void> _loadProfileCache(String profileId) async {
-    // Load user profiles and cache them
-    if (_profileCache[profileId] != null) {
-      return;
-    }
-    final data =
-        await supabase.from('profiles').select().eq('id', profileId).single();
-    final profile = Profile.fromMap(data);
-    setState(() {
-      _profileCache[profileId] = profile;
-    });
-  }
-
-  void _logout() async {
-    // Logout the user
-    await supabase.auth.signOut();
-    Navigator.of(context).pushAndRemoveUntil(
-      // Navigate to RegisterPage and remove all previous routes
-      RegisterPage.route(),
-      (route) => false,
-    );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Logged out successfully!'),
-        backgroundColor: Color.fromARGB(255, 142, 66, 125),
+      builder: (context) => BlocProvider<ChatCubit>(
+        create: (context) => ChatCubit()..setMessagesListener(roomId),
+        child: const ChatPage(),
       ),
     );
   }
@@ -74,66 +26,56 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Chat'), actions: [
-        IconButton(
-          onPressed: _logout,
-          icon: const Icon(Icons.logout),
-        ),
-        IconButton(
-          onPressed: () {
-            // Navigate to user profile page
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const UserProfilePage(),
-              ),
-            );
-          },
-          icon: const Icon(Icons.account_circle)
-        ),
-      ]),
-      body: StreamBuilder<List<Message>>(
-        stream: _messagesStream,
-        builder: (context, snapshot) {
-          if (snapshot.hasData) {
-            final messages = snapshot.data!;
+      appBar: AppBar(title: const Text('Chat')),
+      body: BlocConsumer<ChatCubit, ChatState>(
+        listener: (context, state) {
+          if (state is ChatError) {
+            context.showErrorSnackBar(message: state.message);
+          }
+        },
+        builder: (context, state) {
+          if (state is ChatInitial) {
+            return preloader;
+          } else if (state is ChatLoaded) {
+            final messages = state.messages;
             return Column(
               children: [
                 Expanded(
-                  child: messages.isEmpty
-                      ? const Center(
-                          child: Text('Start your conversation now :)'),
-                        )
-                      : ListView.builder(
-                          reverse: true,
-                          itemCount: messages.length,
-                          itemBuilder: (context, index) {
-                            final message = messages[index];
-
-                            // Load user profile cache for each message
-                            _loadProfileCache(message.profileId);
-
-                            return _ChatBubble(
-                              message: message,
-                              profile: _profileCache[message.profileId],
-                            );
-                          },
-                        ),
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    reverse: true,
+                    itemCount: messages.length,
+                    itemBuilder: (context, index) {
+                      final message = messages[index];
+                      return _ChatBubble(message: message);
+                    },
+                  ),
                 ),
                 const _MessageBar(),
               ],
             );
-          } else {
-            return preloader;
+          } else if (state is ChatEmpty) {
+            return const Column(
+              children: [
+                Expanded(
+                  child: Center(
+                    child: Text('Start your conversation now :)'),
+                  ),
+                ),
+                _MessageBar(),
+              ],
+            );
+          } else if (state is ChatError) {
+            return Center(child: Text(state.message));
           }
+          throw UnimplementedError();
         },
       ),
-      backgroundColor: Color.fromARGB(248, 234, 189, 212),
     );
   }
 }
 
-// Set of widget that contains TextField and Button to submit message
+/// Set of widget that contains TextField and Button to submit message
 class _MessageBar extends StatefulWidget {
   const _MessageBar({
     Key? key,
@@ -149,32 +91,35 @@ class _MessageBarState extends State<_MessageBar> {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Color.fromARGB(255, 255, 255, 255),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  keyboardType: TextInputType.text,
-                  maxLines: null,
-                  autofocus: true,
-                  controller: _textController,
-                  decoration: const InputDecoration(
-                    hintText: 'Type a message',
-                    border: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.all(8),
-                  ),
+      color: Theme.of(context).cardColor,
+      child: Padding(
+        padding: EdgeInsets.only(
+          top: 8,
+          left: 8,
+          right: 8,
+          bottom: MediaQuery.of(context).padding.bottom,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                keyboardType: TextInputType.text,
+                maxLines: null,
+                autofocus: true,
+                controller: _textController,
+                decoration: const InputDecoration(
+                  hintText: 'Type a message',
+                  border: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  contentPadding: EdgeInsets.all(8),
                 ),
               ),
-              TextButton(
-                onPressed: () => _submitMessage(),
-                child: const Text('Send'),
-              ),
-            ],
-          ),
+            ),
+            TextButton(
+              onPressed: () => _submitMessage(),
+              child: const Text('Send'),
+            ),
+          ],
         ),
       ),
     );
@@ -182,37 +127,23 @@ class _MessageBarState extends State<_MessageBar> {
 
   @override
   void initState() {
-    // Initialize text controller
     _textController = TextEditingController();
     super.initState();
   }
 
   @override
   void dispose() {
-    // Dispose text controller
     _textController.dispose();
     super.dispose();
   }
 
   void _submitMessage() async {
-    // Submit message
     final text = _textController.text;
-    final myUserId = supabase.auth.currentUser!.id;
     if (text.isEmpty) {
-      context.showErrorSnackBar(message: 'Message cannot be empty');
       return;
     }
+    BlocProvider.of<ChatCubit>(context).sendMessage(text);
     _textController.clear();
-    try {
-      await supabase.from('messages').insert({
-        'profile_id': myUserId,
-        'content': text,
-      });
-    } on PostgrestException catch (error) {
-      context.showErrorSnackBar(message: error.message);
-    } catch (_) {
-      context.showErrorSnackBar(message: unexpectedErrorMessage);
-    }
   }
 }
 
@@ -220,34 +151,45 @@ class _ChatBubble extends StatelessWidget {
   const _ChatBubble({
     Key? key,
     required this.message,
-    required this.profile,
   }) : super(key: key);
 
   final Message message;
-  final Profile? profile;
 
   @override
   Widget build(BuildContext context) {
     List<Widget> chatContents = [
-      GestureDetector(
-        onTap: () {
-          // Show user profile modal bottom sheet on tap
-          showModalBottomSheet(
-            context: context,
-            builder: (context) => Theme(
-              data: Theme.of(context),
-              child: _buildUserProfile(context),
-            )
-          );
-        },
-        child: CircleAvatar(
-          backgroundColor: const Color.fromARGB(255, 255, 255, 255),
-          foregroundColor: Color.fromARGB(255, 228, 118, 8),
-          child: profile == null
-              ? const CircularProgressIndicator()
-              : Text(profile!.username.substring(0, 2)),
+      if (!message.isMine)
+        UserAvatar(
+          userId: message.profileId,
+          onTap: () {
+            final profilesCubit = context.read<ProfilesCubit>();
+            profilesCubit.getProfile(message.profileId);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                backgroundColor: const Color.fromARGB(255, 248, 212, 115),
+                content: BlocBuilder<ProfilesCubit, ProfilesState>(
+                  builder: (context, state) {
+                    if (state is ProfilesLoaded) {
+                      final profile = state.profiles[message.profileId];
+                      if (profile != null) {
+                        final formattedDate = DateFormat('dd.MM.yyyy').format(profile.createdAt);
+                        return DefaultTextStyle(
+                          style: const TextStyle(color: Colors.black),
+                          child: Text('${profile.username} | Since: $formattedDate'),
+                        );
+                      }
+                    }
+                    return const Text('Loading...');
+                  },
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20), // Make it circular
+                ),
+                behavior: SnackBarBehavior.floating, // Make it floating
+              ),
+            );
+          },
         ),
-      ),
       const SizedBox(width: 12),
       Flexible(
         child: Container(
@@ -257,15 +199,15 @@ class _ChatBubble extends StatelessWidget {
           ),
           decoration: BoxDecoration(
             color: message.isMine
-                ? Theme.of(context).primaryColor
-                : Color.fromARGB(255, 255, 255, 255),
+                ? Colors.grey[300]
+                : Theme.of(context).primaryColor,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text(message.content),
         ),
       ),
       const SizedBox(width: 12),
-      Text(format(message.createdAt, locale: 'en_short')),
+      Text(format(message.createdAt, locale: 'en_short')), // Original timestamp display
       const SizedBox(width: 60),
     ];
     if (message.isMine) {
@@ -274,51 +216,10 @@ class _ChatBubble extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 18),
       child: Row(
-        mainAxisAlignment: message.isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment:
+            message.isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: chatContents,
       ),
     );
-  }
-
-Widget _buildUserProfile(BuildContext context) {
-  final TextStyle headlineTextStyle =
-      Theme.of(context).textTheme.titleLarge!.copyWith(
-            color: const Color.fromARGB(255, 228, 118, 8),
-          );
-
-  final TextStyle contentTextStyle = TextStyle(
-    fontSize: 16,
-    color: Theme.of(context).primaryColorDark,
-  );
-
-  return Container(
-    padding: const EdgeInsets.all(16),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Profile',
-          style: headlineTextStyle,
-        ),
-        if (profile != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            'Username: ${profile!.username}',
-            style: contentTextStyle,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Created At: ${_formatDateTime(profile!.createdAt)}',
-            style: contentTextStyle,
-          ),
-        ],
-      ],
-    ),
-  );
-}
-
-  String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute}';
   }
 }

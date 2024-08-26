@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:my_chat_app/pages/chat_page.dart';
 import 'package:my_chat_app/utils/constants.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -7,8 +6,8 @@ class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
 
   static Route<void> route() {
-    // Route to navigate to the login page
-    return MaterialPageRoute(builder: (context) => const LoginPage());
+    return MaterialPageRoute(
+        builder: (context) => const LoginPage());
   }
 
   @override
@@ -21,25 +20,19 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordController = TextEditingController();
 
   Future<void> _signIn() async {
-    // Method to sing in the user
     setState(() {
       _isLoading = true;
     });
     try {
-      // Sing in with Supabase authentication
       await supabase.auth.signInWithPassword(
         email: _emailController.text,
         password: _passwordController.text,
       );
-      // Navigate to the chat page on succesful sing-in
-      Navigator.of(context)
-          .pushAndRemoveUntil(ChatPage.route(), (route) => false);
     } on AuthException catch (error) {
-      // Handle authentication exceptions
       context.showErrorSnackBar(message: error.message);
     } catch (_) {
-      // Handle unexpected errors
-      context.showErrorSnackBar(message: unexpectedErrorMessage);
+      context.showErrorSnackBar(
+          message: unexpectedErrorMessage);
     }
     if (mounted) {
       setState(() {
@@ -50,7 +43,6 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
-    // Dispose text controllers to avoid memory leaks
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -58,6 +50,8 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    final Widget spacer = SizedBox(height: 16);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Sign In')),
       body: ListView(
@@ -65,16 +59,18 @@ class _LoginPageState extends State<LoginPage> {
         children: [
           TextFormField(
             controller: _emailController,
-            decoration: const InputDecoration(labelText: 'Email'),
+            decoration:
+                const InputDecoration(labelText: 'Email'),
             keyboardType: TextInputType.emailAddress,
           ),
-          formSpacer,
+          spacer,
           TextFormField(
             controller: _passwordController,
-            decoration: const InputDecoration(labelText: 'Password'),
+            decoration: const InputDecoration(
+                labelText: 'Password'),
             obscureText: true,
           ),
-          formSpacer,
+          spacer,
           ElevatedButton(
             onPressed: _isLoading ? null : _signIn,
             child: const Text('Login'),

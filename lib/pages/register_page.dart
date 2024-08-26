@@ -1,16 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:my_chat_app/pages/chat_page.dart';
 import 'package:my_chat_app/pages/login_page.dart';
+import 'package:my_chat_app/pages/rooms_page.dart';
 import 'package:my_chat_app/utils/constants.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class RegisterPage extends StatefulWidget {
-  const RegisterPage({Key? key, required this.isRegistering}) : super(key: key);
+  const RegisterPage(
+      {super.key, required this.isRegistering});
 
   static Route<void> route({bool isRegistering = false}) {
-    // Route to navigate to the register page
     return MaterialPageRoute(
-      builder: (context) => RegisterPage(isRegistering: isRegistering),
+      builder: (context) =>
+          RegisterPage(isRegistering: isRegistering),
     );
   }
 
@@ -29,6 +32,34 @@ class _RegisterPageState extends State<RegisterPage> {
   final _passwordController = TextEditingController();
   final _usernameController = TextEditingController();
 
+  late final StreamSubscription<AuthState>
+      _authSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+
+    bool haveNavigated = false;
+    // Listen to auth state to redirect user when the user clicks on confirmation link
+    _authSubscription =
+        supabase.auth.onAuthStateChange.listen((data) {
+      final session = data.session;
+      if (session != null && !haveNavigated) {
+        haveNavigated = true;
+        Navigator.of(context)
+            .pushReplacement(RoomsPage.route());
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+
+    // Dispose subscription when no longer needed
+    _authSubscription.cancel();
+  }
+
   Future<void> _signUp() async {
     final isValid = _formKey.currentState!.validate();
     if (!isValid) {
@@ -38,21 +69,28 @@ class _RegisterPageState extends State<RegisterPage> {
     final password = _passwordController.text;
     final username = _usernameController.text;
     try {
-      // Sign up with Supabase authentication
       await supabase.auth.signUp(
-          email: email, password: password, data: {'username': username});
-      // Navigate to the chat page on succesful sign-up
-      Navigator.of(context)
-          .pushAndRemoveUntil(ChatPage.route(), (route) => false);
+        email: email,
+        password: password,
+        data: {'username': username},
+        emailRedirectTo: 'io.supabase.chat://login',
+      );
+      context.showSnackBar(
+          message:
+              'Please check your inbox for confirmation email.');
     } on AuthException catch (error) {
       context.showErrorSnackBar(message: error.message);
     } catch (error) {
-      context.showErrorSnackBar(message: unexpectedErrorMessage);
+      debugPrint(error.toString());
+      context.showErrorSnackBar(
+          message: unexpectedErrorMessage);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final Widget spacer = SizedBox(height: 16);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Register'),
@@ -75,7 +113,7 @@ class _RegisterPageState extends State<RegisterPage> {
               },
               keyboardType: TextInputType.emailAddress,
             ),
-            formSpacer,
+            spacer,
             TextFormField(
               controller: _passwordController,
               obscureText: true,
@@ -92,7 +130,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 return null;
               },
             ),
-            formSpacer,
+            spacer,
             TextFormField(
               controller: _usernameController,
               decoration: const InputDecoration(
@@ -102,26 +140,28 @@ class _RegisterPageState extends State<RegisterPage> {
                 if (val == null || val.isEmpty) {
                   return 'Required';
                 }
-                final isValid = RegExp(r'^[A-Za-z0-9_]{3,24}$').hasMatch(val);
+                final isValid =
+                    RegExp(r'^[A-Za-z0-9_]{3,24}$')
+                        .hasMatch(val);
                 if (!isValid) {
                   return '3-24 long with alphanumeric or underscore';
                 }
                 return null;
               },
             ),
-            formSpacer,
+            spacer,
             ElevatedButton(
               onPressed: _isLoading ? null : _signUp,
               child: const Text('Register'),
             ),
-            formSpacer,
+            spacer,
             TextButton(
-              onPressed: () {
-                // Navigate to the login page
-                Navigator.of(context).push(LoginPage.route());
-              },
-              child: const Text('I already have an account'),
-            )
+                onPressed: () {
+                  Navigator.of(context)
+                      .push(LoginPage.route());
+                },
+                child:
+                    const Text('I already have an account'))
           ],
         ),
       ),

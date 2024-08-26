@@ -32,6 +32,9 @@ dependencies:
     sdk: flutter
   supabase_flutter: ^1.0.0
   timeago: ^3.1.0
+  flutter_bloc: ^8.0.0
+  uuid: ^3.0.4
+
 
 
 

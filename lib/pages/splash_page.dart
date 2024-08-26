@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:my_chat_app/pages/chat_page.dart';
 import 'package:my_chat_app/pages/register_page.dart';
+import 'package:my_chat_app/pages/rooms_page.dart';
 import 'package:my_chat_app/utils/constants.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-// Page to redirect users to the appropriate page depending on the initial auth state
+/// Page to redirect users to the appropriate page depending on the initial auth state
 class SplashPage extends StatefulWidget {
   const SplashPage({Key? key}) : super(key: key);
 
@@ -14,30 +15,37 @@ class SplashPage extends StatefulWidget {
 class SplashPageState extends State<SplashPage> {
   @override
   void initState() {
+    getInitialSession();
     super.initState();
-    _redirect();
   }
 
-  Future<void> _redirect() async {
-    // Wait for the widget to mounted
+  Future<void> getInitialSession() async {
+    // quick and dirty way to wait for the widget to mount
     await Future.delayed(Duration.zero);
 
-    // Check current auth session
-    final session = supabase.auth.currentSession;
-    if (session == null) {
-      // If no session, navigate to the register page
-      Navigator.of(context)
-          .pushAndRemoveUntil(RegisterPage.route(), (route) => false);
-    } else {
-      // If session exists, navigate to the chat page
-      Navigator.of(context)
-          .pushAndRemoveUntil(ChatPage.route(), (route) => false);
+    try {
+      final session =
+          await SupabaseAuth.instance.initialSession;
+      if (session == null) {
+        Navigator.of(context).pushAndRemoveUntil(
+            RegisterPage.route(), (_) => false);
+      } else {
+        Navigator.of(context).pushAndRemoveUntil(
+            RoomsPage.route(), (_) => false);
+      }
+    } catch (_) {
+      context.showErrorSnackBar(
+        message: 'Error occurred during session refresh',
+      );
+      Navigator.of(context).pushAndRemoveUntil(
+          RegisterPage.route(), (_) => false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Display preloader while redirecting
-    return const Scaffold(body: preloader);
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
+    );
   }
 }

@@ -4,11 +4,15 @@ class Message {
     required this.profileId,
     required this.content,
     required this.createdAt,
+    required this.roomId,
     required this.isMine,
   });
 
   /// ID of the message
   final String id;
+
+  /// ID of the room where the message is posted
+  final String roomId;
 
   /// ID of the user who posted the message
   final String profileId;
@@ -29,5 +33,16 @@ class Message {
         profileId = map['profile_id'],
         content = map['content'],
         createdAt = DateTime.parse(map['created_at']),
+        roomId = map['room_id'],
         isMine = myUserId == map['profile_id'];
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'profile_id': profileId,
+      'content': content,
+      'created_at': createdAt.toIso8601String(),
+      'room_id': roomId,
+    };
+  }
 }
